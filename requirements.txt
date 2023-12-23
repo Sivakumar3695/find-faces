@@ -6,3 +6,5 @@ numpy==1.21.6
 pymongo==4.6.1
 insightface==0.7.3
 tqdm==4.66.1
+PyYAML~=6.0.1
+pyaml-env~=1.2.1

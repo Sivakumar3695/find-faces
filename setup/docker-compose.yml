@@ -1,0 +1,24 @@
+version: '3.1'
+
+services:
+
+  mongo:
+    image: mongo
+    container_name: find-face-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      # seeding scripts
+      - mongo-entrypoint:/docker-entrypoint-initdb.d
+      # named volumes
+      - mongodb:/data/db
+      - mongoconfig:/data/configdb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+
+volumes:
+  mongodb:
+  mongoconfig:
+  mongo-entrypoint:

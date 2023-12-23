@@ -1,0 +1,5 @@
+app_config:
+  port: 8000
+  db_url: !ENV ${MONGO_DB_URL:mongodb://@localhost:27017}
+  test: !ENV ${TT:cool}
+  image_folder: /home/siva/Documents/Test/unknown

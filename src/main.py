@@ -1,5 +1,6 @@
 import fastapi.responses
 import numpy as np
+import uvicorn
 from PIL import Image, ImageOps
 import os
 from fastapi import FastAPI, UploadFile
@@ -9,27 +10,38 @@ from pymongo import MongoClient
 from insightface.app import FaceAnalysis
 import insightface
 from tqdm import tqdm
+from utils import config_loader
 
-FOLDER = '/home/siva/Documents/Test/unknown/'
-KNOWN_FOLDER = '/home/siva/Documents/Test/known/'
-THUMBNAIL_FOLDER = '/home/siva/Documents/Test/unknown/.thumbnail/'
-TMP_FOLDER = '/home/siva/Documents/Test/.tmp/'
-FACE_TO_FILE_MAP = {}
-client = MongoClient("localhost", 27017)
+
+config = config_loader.load()
+
+# ---- folder constants ----
+image_folder = config['image_folder']
+known_folder = f"{config['image_folder']}/.known"
+tmp_folder = f"{config['image_folder']}/.tmp"
+thumbnail_folder = f"{config['image_folder']}/.thumbnail"
+# ---- folder constantns end ----
+
+
+# ---- start of DB initialization ----
 database = 'face_recognition'
 unknown_data_collection = 'unknown_data'
 known_faces_collection = 'known_faces'
 
+client = MongoClient(config['db_url'])
+db = client[database]
+# ---- end of DB initialization ----
+
+# ---- start model initialization ----
 face_insight = FaceAnalysis(providers=['CPUExecutionProvider'])
 face_insight.prepare(ctx_id=0, det_size=(640, 640))
 handler = insightface.model_zoo.get_model('buffalo_l')
 handler.prepare(ctx_id=0)
-
-db = client[database]
+# ---- end model initialization ----
 
 
 def find_faces_and_store(filename):
-    img = cv2.imread(f'{TMP_FOLDER}{filename}')
+    img = cv2.imread(f"{tmp_folder}/{filename}")
     faces = face_insight.get(img)
     idx = 1
 
@@ -52,13 +64,13 @@ def find_faces_and_store(filename):
 
         cropped_face = img[new_bbox[1]:new_bbox[3], new_bbox[0]:new_bbox[2]]
         face_id = f'face-{idx}-{filename}'
-        cv2.imwrite(f"{KNOWN_FOLDER}{face_id}", cropped_face)
+        cv2.imwrite(f"{known_folder}/{face_id}", cropped_face)
         idx = idx + 1
 
         faces_data.append({
             'face_id': face_id.split('.')[0],
             'embedding': embedding.tolist(),
-            'image_path': f"{KNOWN_FOLDER}{face_id}",
+            'image_path': f"{known_folder}/{face_id}",
         })
     db[known_faces_collection].insert_many(faces_data)
 
@@ -69,18 +81,30 @@ def create_thumbnail(file_path, file_name):
     image.thumbnail((image.width*200//image.height, 200))
 
     # creating thumbnail
-    image.save(THUMBNAIL_FOLDER + file_name)
+    image.save(f"{thumbnail_folder}/{file_name}", quality=95)
 
 
 def load_db_mongo():
+    os.makedirs(f"{config['image_folder']}/.thumbnail/", exist_ok=True)
+    os.makedirs(f"{config['image_folder']}/.known/", exist_ok=True)
+    os.makedirs(f"{config['image_folder']}/.tmp/", exist_ok=True)
+
     print("loading mongodb")
-    for root, dirs, files in os.walk(FOLDER):
+
+    if not os.path.exists(config['image_folder']):
+        raise Exception('Path does not exist')
+
+    for root, dirs, files in os.walk(config['image_folder']):
         if 'thumbnail' in root:
             continue
         for i in tqdm(range(len(files))):
             filename = files[i]
             file_path = os.path.join(root, filename)
-            if not ('.jpg' in filename.lower() or '.jpeg' in filename.lower() or '.png' in filename.lower()):
+            if not (
+                    '.jpg' in filename.lower()
+                    or '.jpeg' in filename.lower()
+                    or '.png' in filename.lower()
+            ):
                 continue
             img = cv2.imread(file_path)
             faces = face_insight.get(img)
@@ -116,18 +140,20 @@ def get_known_face_list():
         'images':  [known['face_id'] for known in known_images]
     }
 
+
 @app.get(
     '/photos/thumbnail/{image_name}',
 )
 def get_thumbnail(image_name: str):
-    return fastapi.responses.FileResponse(THUMBNAIL_FOLDER + image_name)
+    return fastapi.responses.FileResponse(f"{thumbnail_folder}/{image_name}")
 
 
 @app.get(
     '/image',
 )
 def get_image(name: str):
-    return fastapi.responses.FileResponse(FOLDER + name)
+    return fastapi.responses.FileResponse(f"{config['image_folder']}/{name}")
+
 
 @app.get(
     '/face/{face_id}',
@@ -141,8 +167,8 @@ def get_face(face_id: str):
 
 @app.post('/upload')
 def upload_known_face(photoFile: UploadFile):
-
-    file_location = f"{TMP_FOLDER}{photoFile.filename}"
+    file_location = f"{tmp_folder}/{photoFile.filename}"
+    print(file_location)
     with open(file_location, "wb+") as file_object:
         file_object.write(photoFile.file.read())
     find_faces_and_store(photoFile.filename)
@@ -176,55 +202,12 @@ def get_photos(face_id: str = None):
 
 
 if __name__ == '__main__':
-    # check_match()
-    # load_db()
-    # dfs = DeepFace.find('/home/siva/Documents/Test/vachu.JPG'
-    #                     , db_path='/home/siva/Documents/Test/unknown/'
-    #                     , model_name='Facenet'
-    #                     , distance_metric='euclidean'
-    #                     , detector_backend='retinaface')
-    #
-    # print(dfs[0].head(10))
+    uvicorn.run("main:app", port=8000, log_level="info")
     # load_db_mongo()
-    # app = FaceAnalysis(providers=['CPUExecutionProvider'])
-    # app.prepare(ctx_id=0, det_size=(640, 640))
-    # handler = insightface.model_zoo.get_model('buffalo_l')
-    # handler.prepare(ctx_id=0)
-    # # handler.compute_sim('')
-    # # handler.get()
-    #
-    #
-    # img = cv2.imread('/home/siva/Documents/Test/vachu.JPG')
-    # faces = app.get(img)
-    #
-    # counter = 0
-    # for filename in os.scandir(FOLDER):
-    #     if (filename.path == '/home/siva/Documents/Test/unknown/vector.index'
-    #             or filename.path == '/home/siva/Documents/Test/unknown/file.json'):
+    # for file in os.scandir(FOLDER):
+    #     if 'thumbnail' in file.name:
     #         continue
-    #     if filename.is_file():
-    #         img2 = cv2.imread(filename.path)
-    #         facesU = app.get(img2)
-    #
-    #         simarr = []
-    #         for face in facesU:
-    #             sim = handler.compute_sim(face['embedding'], faces[0]['embedding'])
-    #             simarr.append(sim)
-    #             # if sim > 0.6:
-    #             #     print(sim)
-    #             #     rimg = app.draw_on(img2, [face])
-    #             #     cv2.imwrite(f"/home/siva/Documents/Test/test{counter}.jpg", rimg)
-    #             #     counter = counter + 1
-    #         print(f"File: {filename.name}:: {max(simarr)}")
-
-    # print(faces)
-    # rimg = app.draw_on(img, faces)
-    # cv2.imwrite("/home/siva/Documents/Test/test.jpg", rimg)
-
-    for file in os.scandir(FOLDER):
-        if 'thumbnail' in file.name:
-            continue
-        create_thumbnail(file.path, file.name)
+    #     create_thumbnail(file.path, file.name)
 
 
 
