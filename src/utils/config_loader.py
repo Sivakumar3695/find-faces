@@ -8,4 +8,3 @@ def load():
     print(config['app_config']['test'])
     print(config['app_config']['db_url'])
     return config['app_config']
-

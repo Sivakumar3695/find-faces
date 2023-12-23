@@ -50,7 +50,7 @@ def find_faces_and_store(filename):
         bbox = face['bbox']
         embedding = face['embedding']
 
-        head_height = int((bbox[3] - bbox[1]) * 1.3)  # Adjust the factor based on your preference
+        head_height = int((bbox[3] - bbox[1]) * 1.3)
         margin = (head_height - (bbox[3] - bbox[1]))
 
         new_x = max(0, int(bbox[0] - margin))
@@ -208,8 +208,3 @@ if __name__ == '__main__':
     #     if 'thumbnail' in file.name:
     #         continue
     #     create_thumbnail(file.path, file.name)
-
-
-
-
-

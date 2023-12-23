@@ -8,3 +8,5 @@ insightface==0.7.3
 tqdm==4.66.1
 PyYAML~=6.0.1
 pyaml-env~=1.2.1
+pytest==7.4.3
+flake8==5.0.4
