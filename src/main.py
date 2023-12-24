@@ -3,7 +3,7 @@ import numpy as np
 import uvicorn
 from PIL import Image, ImageOps
 import os
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
 from pymongo import MongoClient
@@ -11,7 +11,7 @@ from insightface.app import FaceAnalysis
 import insightface
 from tqdm import tqdm
 from utils import config_loader
-
+from typing import List, Annotated
 
 config = config_loader.load()
 
@@ -182,27 +182,43 @@ def upload_known_face(photoFile: UploadFile):
     }
 
 
+def get_known_face_embedding(face_id: str):
+    obj = db[known_faces_collection].find_one(
+        {'face_id': face_id},
+    )
+    return np.array(obj['embedding'])
+
+
 @app.get('/photos')
-def get_photos(face_id: str = None, page=0):
+def get_photos(face_ids: Annotated[List[str], Query()] = None, page=0):
     page = int(page)
     unknown_images = db[unknown_data_collection].find()
-    if not face_id:
-        unknown_images = unknown_images.skip(page * 50).limit(50)
     result_files = []
 
-    if not face_id:
+    if not face_ids:
+        unknown_images = unknown_images.skip(page * 50).limit(50)
         result_files = [unknown['image_name'] for unknown in unknown_images]
     else:
-        obj = db[known_faces_collection].find_one(
-            {'face_id': face_id},
-        )
-        known_embeddings = np.array(obj['embedding'])
-        for unknown in unknown_images:
-            unknown_embeddings = unknown['embeddings']
-            for emb in unknown_embeddings:
-                sim = handler.compute_sim(known_embeddings, np.array(emb))
-                if sim >= 0.4:
-                    result_files.append(unknown['image_name'])
+        for face_id in face_ids:
+            result_face = set()
+            known_embeddings = get_known_face_embedding(face_id)
+
+            for unknown in unknown_images.clone():
+                unknown_embeddings = unknown['embeddings']
+                for emb in unknown_embeddings:
+
+                    sim = handler.compute_sim(known_embeddings, np.array(emb))
+                    if sim >= 0.4:
+                        result_face.add(unknown['image_name'])
+
+            result_files.append(result_face)
+        result = None
+        for result_face in result_files:
+            if result is None:
+                result = result_face
+            else:
+                result = result & result_face
+        result_files = list(result)
         result_files = result_files[(page*50):(page*50+50)]
     return {
         'images': result_files
@@ -232,3 +248,4 @@ if __name__ == '__main__':
     #         cv2.imwrite(f"/home/siva/Documents/Test/test{counter}.jpg", rimg)
     #         counter = counter + 1
     # print(f"{max(simarr)}")
+
