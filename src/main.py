@@ -95,6 +95,7 @@ def load_db_mongo():
         raise Exception('Path does not exist')
 
     for root, dirs, files in os.walk(config['image_folder']):
+        print('Loading files in:- ' + root)
         if 'thumbnail' in root:
             continue
         for i in tqdm(range(len(files))):
@@ -152,7 +153,10 @@ def get_thumbnail(image_name: str):
     '/image',
 )
 def get_image(name: str):
-    return fastapi.responses.FileResponse(f"{config['image_folder']}/{name}")
+    data = db[unknown_data_collection].find_one({
+        'image_name': name
+    })
+    return fastapi.responses.FileResponse(data['image_path'])
 
 
 @app.get(
@@ -179,8 +183,11 @@ def upload_known_face(photoFile: UploadFile):
 
 
 @app.get('/photos')
-def get_photos(face_id: str = None):
+def get_photos(face_id: str = None, page=0):
+    page = int(page)
     unknown_images = db[unknown_data_collection].find()
+    if not face_id:
+        unknown_images = unknown_images.skip(page * 50).limit(50)
     result_files = []
 
     if not face_id:
@@ -196,6 +203,7 @@ def get_photos(face_id: str = None):
                 sim = handler.compute_sim(known_embeddings, np.array(emb))
                 if sim >= 0.4:
                     result_files.append(unknown['image_name'])
+        result_files = result_files[(page*50):(page*50+50)]
     return {
         'images': result_files
     }
@@ -208,3 +216,19 @@ if __name__ == '__main__':
     #     if 'thumbnail' in file.name:
     #         continue
     #     create_thumbnail(file.path, file.name)
+    # img = cv2.imread('/home/siva/Documents/Test/vachu.JPG')
+    # faces = face_insight.get(img)
+    #
+    # img2 = cv2.imread('/home/siva/Documents/Engagement_pics/chennimalai/DSC01109.JPG')
+    # facesU = face_insight.get(img2)
+    # counter = 0
+    # simarr = []
+    # for face in facesU:
+    #     sim = handler.compute_sim(face['embedding'], faces[0]['embedding'])
+    #     simarr.append(sim)
+    #     if sim > 0.4:
+    #         print(sim)
+    #         rimg = face_insight.draw_on(img2, [face])
+    #         cv2.imwrite(f"/home/siva/Documents/Test/test{counter}.jpg", rimg)
+    #         counter = counter + 1
+    # print(f"{max(simarr)}")
